@@ -42,11 +42,10 @@ def make_star(npix0,osf,xc,yc,rstar,u1,u2):
     rstar - radius of the star in pixels
     u1 and u2 - linear and quadratic limb darkening coefficients'
     npix=int(np.floor(npix0*osf))
-    x=np.arange(npix*npix)% npix
-    x=np.reshape(x,(npix,npix))
-    y=np.rot90(x)-yc*osf
-    x=x-xc*osf
-    r2=(x**2+y**2)/(rstar*osf)**2
+    map=np.mgrid[:npix,:npix].astype('float64')
+    map[0]-=xc*osf
+    map[1]-=yc*osf
+    r2=(map[0]*map[0]+map[1]*map[1])/(rstar*osf)**2
     mu=np.sqrt(1.-r2)
     star=1-u1*(1.-mu)-u2*(1.-mu**2)
     star[np.isnan(star)]=0.
@@ -89,7 +88,7 @@ vgrid=np.arange(-160,160.1,0.1)                            # velocity grid
 profile=make_lineprofile(npix_star,Rs,xc,vgrid,A,veq,lw)   # make line profile for each vertical slice of the star
 star=make_star(npix_star,OSF,xc,yc,Rs,u1,u2)               # make a limb-darkened stellar disk
 sflux=star.sum(axis=1)                                     # sum up the stellar disk across the x-axis
-improf=np.sum(sflux[:,None]*profile,axis=0)                # calculate the spectrum for an unocculted star
+improf=np.sum(sflux[:,np.newaxis]*profile,axis=0)                # calculate the spectrum for an unocculted star
 normalisation=improf[0]
 improf=improf/normalisation
 
@@ -114,9 +113,6 @@ hdu.writeto("new_sim/reference_profile.fits",overwrite=True)
 
 for dR in R_ring:
 ##initialise ring parameters
-    plt.imshow(star)
-    plt.show()
-    angle=45.
     print ("Starting on ring HWHM: %4.2f R_star"% dR)
     dRRs=dR*Rs
     npix=4096
@@ -133,7 +129,6 @@ for dR in R_ring:
             tmap=np.roll(rmap,x,axis=1)
             tmap=np.roll(tmap,y,axis=0)
             tmap=tmap[npix/2-512:npix/2+513,npix/2-512:npix/2+513]
-            #tmap=tmap[np.fix(xc_r-npix_star/2).astype(int):(np.fix(xc_r+npix_star/2)+1).astype(int),:]
             for j,et in enumerate(opacity):
                 map=star*(1.-tmap*et)
                 """if (j == 3) & ((k % 25) == 0):
@@ -142,10 +137,7 @@ for dR in R_ring:
                    plt.pause(0.1)
                 """
                 sflux=map.sum(axis=1)
-                #lp=m[:,None]*lineprof0
-                #lineprof[:,i,j]=lp.sum(axis=0)
-                line_profile[k,i,j,:]=np.sum(sflux[:,None]*profile,axis=0)/normalisation
-    #plt.close()
+                line_profile[k,i,j,:]=np.sum(sflux[:,np.newaxis]*profile,axis=0)/normalisation
     hdu = fits.PrimaryHDU(line_profile)
     hdu.writeto(str("new_sim/simulation_RR_%4.2f.fits" % (2*dR)),overwrite=True)
     
