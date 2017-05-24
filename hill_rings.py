@@ -74,6 +74,31 @@ def make_map(npix,npix_star,dRRs,angle):
     return rmap
 
 
+@jit
+def overlay_ring(npix_star,b,dr,angle,map0):
+   """
+   Makes a stick-like object and overlays on the ring system.
+   npix_star - number of pixels in the stellar map
+   dRRs - the half width of the ring in pixels
+   angle - the rotation from the vertical axis of the rings
+   output is a 2d square image with ones where the ring is and zeroes outside
+   """
+   map=map0.copy()
+   minr=max([0,b-dr])
+   maxr=min([npix_star-1,b+dr])
+   if (minr < npix_star) & (maxr > 0):
+      iminr=int(minr)
+      imaxr=int(maxr)
+      fl=1.-(minr-iminr)
+      fr=maxr-imaxr
+      map[:,iminr:imaxr+1]=1.
+      map[:,iminr]=fl
+      map[:,imaxr]=fr
+      if angle !=0.:
+         map=ndimage.interpolation.rotate(map,angle,reshape=False,cval=0.,order=1)
+      
+   return map
+
 
 ##initialise the star
 Rs=510                                                     # radius of the star in pixels
@@ -113,7 +138,7 @@ hdu = fits.PrimaryHDU(improf)
 hdu.writeto("new_sim/reference_profile.fits",overwrite=True)
 
 
-
+map0=star*0.
 
 for dR in R_ring:
 ##initialise ring parameters
@@ -126,23 +151,15 @@ for dR in R_ring:
     
     for i,lam in enumerate(lambda_star):
         print i,lam
-        rmap=make_map(npix,npix_star,dRRs,90.-lam)
         for k,pr in enumerate(pos):
-            x=int(pr*np.cos(np.deg2rad(lam))*Rs+0.5)
-            y=int(pr*np.sin(np.deg2rad(lam))*Rs+0.5)
-            tmap=np.roll(rmap,x,axis=1)
-            tmap=np.roll(tmap,y,axis=0)
-            tmap=tmap[npix/2-512:npix/2+513,npix/2-512:npix/2+513]
+            tmap=overlay_ring(npix_star,np.round(pr*Rs+xc),dRRs,lam,map0)
             for j,et in enumerate(opacity):
                 map=star*(1.-tmap*et)
-
                 sflux=map.sum(axis=0)
                 line_profile[k,i,j,:]=np.sum(sflux[:,np.newaxis]*profile,axis=0)/normalisation
-                #if (j == 3) & (k==50):
-                #   plt.plot(line_profile[k,i,j,:]-improf)
-                #   plt.show()
+                """if (j == 3) & (k == 20):
+                    plt.imshow(tmap)
+                    plt.show()"""
                     
     hdu = fits.PrimaryHDU(line_profile)
     hdu.writeto(str("new_sim/simulation_RR_%4.2f.fits" % (2*dR)),overwrite=True)
-    
-    
