@@ -15,7 +15,7 @@ plt.ion()
 
 @jit
 def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
-    'returns the line profile for the different points on the star
+    """returns the line profile for the different points on the star
     as a 2d array with one axis being velocity and other axis position
     on the star
     npix - number of pixels along one axis of the star (assumes solid bosy rotation)
@@ -24,8 +24,7 @@ def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
     vgrid - the velocity grid for the spectrum you wist to make (1d array in km/s)
     A - the line depth of the intrinsic profile - the bottom is at (1 - A) is the max line depth (single value)
     veq - the equatorial velocity (the v sin i for star of inclination i) in km/s (single value)
-    linewidth - the sigma of your Gaussian line profile in km/s (single value)'
-def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
+    linewidth - the sigma of your Gaussian line profile in km/s (single value)"""
     vc=(np.arange(npix)-xc)/rstar*veq
     vs=vgrid[np.newaxis,:]-vc[:,np.newaxis]
     profile=1.-A*np.exp( -(vs*vs)/2./linewidth**2)
@@ -33,14 +32,14 @@ def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
 
 @jit
 def make_star(npix0,osf,xc,yc,rstar,u1,u2):
-    ' makes a circular disk with limb darkening
+    """ makes a circular disk with limb darkening
     returns a 2D map of the limb darkened star
     npix0 - number of pixels along one side of the output square array
     osf - the oversampling factor (integer multiplier)
     xc - x coordinate of the star
     yc - y coordinate of the star
     rstar - radius of the star in pixels
-    u1 and u2 - linear and quadratic limb darkening coefficients'
+    u1 and u2 - linear and quadratic limb darkening coefficients"""
     npix=int(np.floor(npix0*osf))
     map=np.mgrid[:npix,:npix].astype('float64')
     map[0]-=xc*osf
@@ -55,12 +54,12 @@ def make_star(npix0,osf,xc,yc,rstar,u1,u2):
 
 @jit
 def make_map(npix,npix_star,dRRs,angle):
-    'makes the stick ring and rotates it to a given angle
+    """makes the stick ring and rotates it to a given angle
     npix - number of pixels in the ring map
     npix_star - number of pixels in the stellar map
     dRRs - the half width of the ring in pixels
     angle - the rotation from the vertical axis of the rings
-    output is a 2d square image with ones where the ring is and zeroes outside'
+    output is a 2d square image with ones where the ring is and zeroes outside"""
     map=np.zeros((npix,npix))
     yc=npix/2
     xc=npix/2
