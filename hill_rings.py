@@ -1,0 +1,152 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 11 20:18:44 2017
+
+@author: demooij
+"""
+
+import numpy as np
+from scipy import ndimage
+import matplotlib.pyplot as plt
+import time
+from astropy.io import fits
+from numba import jit
+plt.ion()
+
+@jit
+def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
+    'returns the line profile for the different points on the star
+    as a 2d array with one axis being velocity and other axis position
+    on the star
+    npix - number of pixels along one axis of the star (assumes solid bosy rotation)
+    rstar - the radius of the star in pixels
+    xc - the midpoint of the star in pixels
+    vgrid - the velocity grid for the spectrum you wist to make (1d array in km/s)
+    A - the line depth of the intrinsic profile - the bottom is at (1 - A) is the max line depth (single value)
+    veq - the equatorial velocity (the v sin i for star of inclination i) in km/s (single value)
+    linewidth - the sigma of your Gaussian line profile in km/s (single value)'
+def make_lineprofile(npix,rstar,xc,vgrid,A,veq,linewidth):
+    vc=(np.arange(npix)-xc)/rstar*veq
+    vs=vgrid[np.newaxis,:]-vc[:,np.newaxis]
+    profile=1.-A*np.exp( -(vs*vs)/2./linewidth**2)
+    return profile
+
+@jit
+def make_star(npix0,osf,xc,yc,rstar,u1,u2):
+    ' makes a circular disk with limb darkening
+    returns a 2D map of the limb darkened star
+    npix0 - number of pixels along one side of the output square array
+    osf - the oversampling factor (integer multiplier)
+    xc - x coordinate of the star
+    yc - y coordinate of the star
+    rstar - radius of the star in pixels
+    u1 and u2 - linear and quadratic limb darkening coefficients'
+    npix=int(np.floor(npix0*osf))
+    x=np.arange(npix*npix)% npix
+    x=np.reshape(x,(npix,npix))
+    y=np.rot90(x)-yc*osf
+    x=x-xc*osf
+    r2=(x**2+y**2)/(rstar*osf)**2
+    mu=np.sqrt(1.-r2)
+    star=1-u1*(1.-mu)-u2*(1.-mu**2)
+    star[np.isnan(star)]=0.
+    star=star.reshape((npix0,osf,npix0,osf))
+    star=star.mean(axis=3).mean(axis=1)
+    return star
+
+@jit
+def make_map(npix,npix_star,dRRs,angle):
+    'makes the stick ring and rotates it to a given angle
+    npix - number of pixels in the ring map
+    npix_star - number of pixels in the stellar map
+    dRRs - the half width of the ring in pixels
+    angle - the rotation from the vertical axis of the rings
+    output is a 2d square image with ones where the ring is and zeroes outside'
+    map=np.zeros((npix,npix))
+    yc=npix/2
+    xc=npix/2
+    map[np.round(xc-dRRs).astype(int):np.round(yc+dRRs).astype(int),:]=1.
+    rmap=ndimage.interpolation.rotate(map,angle,reshape=False,cval=0.,order=1)
+
+    return rmap
+
+
+
+##initialise the star
+Rs=510                                                     # radius of the star in pixels
+npix_star=1025                                             # number of pixels in the stellar map
+OSF=5                                                      # oversampling factor for star to avoid jagged edges
+u1=0.2752                                                  # linear limbdarkening coefficient
+u2=0.3790                                                  # quadratic limbdarkening coefficient
+xc=511.5                                                   # x-coordinate of disk centre
+yc=511.5                                                   # y-coordinate of disk centre
+A=0.8                                                      # line depth
+veq=130.                                                   # V sin i (km/s)
+l_fwhm=20.                                                 # Intrinsic line FWHM (km/s)
+lw=l_fwhm/2.35                                             # Intinsice line width in sigma (km/s)
+vgrid=np.arange(-160,160.1,0.1)                            # velocity grid
+
+profile=make_lineprofile(npix_star,Rs,xc,vgrid,A,veq,lw)   # make line profile for each vertical slice of the star
+star=make_star(npix_star,OSF,xc,yc,Rs,u1,u2)               # make a limb-darkened stellar disk
+sflux=star.sum(axis=1)                                     # sum up the stellar disk across the x-axis
+improf=np.sum(sflux[:,None]*profile,axis=0)                # calculate the spectrum for an unocculted star
+normalisation=improf[0]
+improf=improf/normalisation
+
+R_ring=np.asarray([0.01,0.025,0.05,0.10,0.25,0.5,0.75,1.00])
+lambda_star=np.arange(-45.,90.1,45.)
+opacity=np.asarray([0.25,0.5,0.75,1.0])
+pos=np.arange(-1,1.01,0.01)
+
+hdu = fits.PrimaryHDU(pos)
+hdu.writeto("new_sim/positions.fits",overwrite=True)
+hdu = fits.PrimaryHDU(lambda_star)
+hdu.writeto("new_sim/lambda_star.fits",overwrite=True)
+hdu = fits.PrimaryHDU(vgrid)
+hdu.writeto("new_sim/vgrid.fits",overwrite=True)
+hdu = fits.PrimaryHDU(opacity)
+hdu.writeto("new_sim/opacity.fits",overwrite=True)
+hdu = fits.PrimaryHDU(improf)
+hdu.writeto("new_sim/reference_profile.fits",overwrite=True)
+
+
+
+
+for dR in R_ring:
+##initialise ring parameters
+    plt.imshow(star)
+    plt.show()
+    angle=45.
+    print ("Starting on ring HWHM: %4.2f R_star"% dR)
+    dRRs=dR*Rs
+    npix=4096
+    xc_r=npix/2
+    
+    line_profile=np.zeros( (pos.shape[0],lambda_star.shape[0],opacity.shape[0],vgrid.shape[0]) )
+    
+    for i,lam in enumerate(lambda_star):
+        print i,lam
+        rmap=make_map(npix,npix_star,dRRs,90.-lam)
+        for k,pr in enumerate(pos):
+            x=int(pr*np.cos(np.deg2rad(lam))*Rs+0.5)
+            y=int(pr*np.sin(np.deg2rad(lam))*Rs+0.5)
+            tmap=np.roll(rmap,x,axis=1)
+            tmap=np.roll(tmap,y,axis=0)
+            tmap=tmap[npix/2-512:npix/2+513,npix/2-512:npix/2+513]
+            #tmap=tmap[np.fix(xc_r-npix_star/2).astype(int):(np.fix(xc_r+npix_star/2)+1).astype(int),:]
+            for j,et in enumerate(opacity):
+                map=star*(1.-tmap*et)
+                """if (j == 3) & ((k % 25) == 0):
+                   plt.imshow(map)
+                   #plt.show()
+                   plt.pause(0.1)
+                """
+                sflux=map.sum(axis=1)
+                #lp=m[:,None]*lineprof0
+                #lineprof[:,i,j]=lp.sum(axis=0)
+                line_profile[k,i,j,:]=np.sum(sflux[:,None]*profile,axis=0)/normalisation
+    #plt.close()
+    hdu = fits.PrimaryHDU(line_profile)
+    hdu.writeto(str("new_sim/simulation_RR_%4.2f.fits" % (2*dR)),overwrite=True)
+    
+    
