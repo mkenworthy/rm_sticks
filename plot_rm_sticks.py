@@ -20,6 +20,12 @@ lineprof = fits.getdata(stick_file, header=False)
 
 print(lineprof.shape)
 
+n_stick_posns = lineprof.shape[0]
+
+print(n_stick_posns)
+n_sticks_shown = 7
+
+
 pos = fits.getdata("new_sim/positions.fits")
 lambda_star = fits.getdata("new_sim/lambda_star.fits")
 vgrid = fits.getdata("new_sim/vgrid.fits")
@@ -35,7 +41,7 @@ print('opacity: {}'.format(opacity))
 print(improf.shape) # 3201
 
 # okay, take a loop over pos
-for npos in np.arange(0, 201, 20):
+for npos in np.arange(0, n_stick_posns, 20):
     plt.plot(vgrid, improf,color='k', linewidth=5)
     lincol = '{:.2f}'.format(npos/201.)
     plt.plot(vgrid, lineprof[npos, 2, 3, :], color=lincol)
@@ -74,6 +80,13 @@ def Rotate2D(pts,cnt,ang=np.pi/4):
     '''pts = {} Rotates points(nx2) about center cnt(2) by angle ang(1) in radian'''
     return np.dot(pts-cnt,np.array([[np.cos(ang),np.sin(ang)],[-np.sin(ang),np.cos(ang)]]))+cnt
 
+from matplotlib import cm
+
+start = 0.2
+stop = 0.8
+number_of_sticks = 13
+stick_color = [cm.jet(x) for x in np.linspace(start, stop, number_of_sticks) ]
+
 # make the coordinates of a stick for plotting
 def make_stick(off=0.5, w=0.2, ang=45.):
     pts = np.array([[-w/2,-5],[-w/2,5],[w/2,5],[w/2,-5]])
@@ -107,25 +120,23 @@ for i, (lam) in enumerate(lambdas):
     ax_star.axes.get_yaxis().set_visible(False)
 
     # plot the direct line profiles
-    for npos in np.arange(0, 201, 20):
+    for j,(npos) in enumerate(np.arange(0, n_stick_posns, 20)):
         ax_line.plot(vgrid, improf,color='k', linewidth=5)
-        lincol = '{:.2f}'.format(npos/201.)
+        lincol = stick_color[j]
         ax_line.plot(vgrid, lineprof[npos, lam, 3, :], color=lincol)
 
         # plot the differential line profiles
-        lincol = '{:.2f}'.format(npos/201.)
         ax_diff.plot(vgrid, lineprofsubsub[npos, lam, 3, :], color=lincol)
-
 
         # generate the relevant stick
         width = 0.10
         offset = pos[npos]
         la = lambda_star[lam]
         stick_coord = make_stick(offset, width, la)
-        stick_patch = Polygon(stick_coord, closed=True, color='blue')
-        patches.append(stick_patch)
+        stick_patch = Polygon(stick_coord, closed=True, color=lincol, facecolor=lincol)
+        ax_star.add_patch(stick_patch)
 
-    p = PatchCollection(patches, alpha=0.4)
+    p = PatchCollection(patches, color='red', alpha=0.4)
     ax_star.add_collection(p)
 
 #    ax_star.add_artist(circle)
