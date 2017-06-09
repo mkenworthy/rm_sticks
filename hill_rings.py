@@ -7,6 +7,7 @@ Created on Tue Apr 11 20:18:44 2017
 
 import numpy as np
 from scipy import ndimage
+from scipy.misc import imrotate
 import matplotlib.pyplot as plt
 import time
 from astropy.io import fits
@@ -75,7 +76,7 @@ def make_map(npix,npix_star,dRRs,angle):
 
 
 @jit
-def overlay_ring(npix_star,b,dr,angle,map0):
+def overlay_ring(npix_star,b,dr,angle,map0,OSF):
    """
    Makes a stick-like object and overlays on the ring system.
    npix_star - number of pixels in the stellar map
@@ -83,10 +84,10 @@ def overlay_ring(npix_star,b,dr,angle,map0):
    angle - the rotation from the vertical axis of the rings
    output is a 2d square image with ones where the ring is and zeroes outside
    """
-   map=map0.copy()
-   minr=max([0,b-dr])
-   maxr=min([npix_star-1,b+dr])
-   if (minr < npix_star) & (maxr > 0):
+   map=np.zeros((npix_star*OSF,npix_star*OSF))#map0.copy()
+   minr=max([0,(b-dr)*OSF])
+   maxr=min([(npix_star*OSF)-1,(b+dr)*OSF])
+   if (minr < (npix_star*OSF)) & (maxr > 0):
       iminr=int(minr)
       imaxr=int(maxr)
       fl=1.-(minr-iminr)
@@ -94,8 +95,11 @@ def overlay_ring(npix_star,b,dr,angle,map0):
       map[:,iminr:imaxr+1]=1.
       map[:,iminr]=fl
       map[:,imaxr]=fr
+      #print ("%7.2f  %7.2f %4i  %4i %6.4f %6.4f %10.6f  %10.6f" %(minr,maxr,iminr,imaxr,fl,fr,(float(imaxr)-float(iminr))/npix_star,map[0,:].sum()/npix_star))
       if angle !=0.:
-         map=ndimage.interpolation.rotate(map,angle,reshape=False,cval=0.,order=1)
+         map=ndimage.interpolation.rotate(map,angle,reshape=False,cval=0.,order=1,prefilter=False)
+   map=map.reshape((npix_star,OSF,npix_star,OSF))
+   map=map.mean(axis=3).mean(axis=1)
       
    return map
 
@@ -104,10 +108,11 @@ def overlay_ring(npix_star,b,dr,angle,map0):
 Rs=510                                                     # radius of the star in pixels
 npix_star=1025                                             # number of pixels in the stellar map
 OSF=5                                                      # oversampling factor for star to avoid jagged edges
+OSF_R=2                                                    # oversampling factor for rings to avoid jagged edges
 u1=0.2752                                                  # linear limbdarkening coefficient
 u2=0.3790                                                  # quadratic limbdarkening coefficient
-xc=511.5                                                   # x-coordinate of disk centre
-yc=511.5                                                   # y-coordinate of disk centre
+xc=512.5                                                   # x-coordinate of disk centre
+yc=512.5                                                   # y-coordinate of disk centre
 A=0.8                                                      # line depth
 veq=130.                                                   # V sin i (km/s)
 l_fwhm=20.                                                 # Intrinsic line FWHM (km/s)
@@ -137,9 +142,7 @@ hdu.writeto("new_sim/opacity.fits",overwrite=True)
 hdu = fits.PrimaryHDU(improf)
 hdu.writeto("new_sim/reference_profile.fits",overwrite=True)
 
-
-map0=star*0.
-
+map0=np.zeros((npix_star,npix_star))
 for dR in R_ring:
 ##initialise ring parameters
     print ("Starting on ring HWHM: %4.2f R_star"% dR)
@@ -152,14 +155,11 @@ for dR in R_ring:
     for i,lam in enumerate(lambda_star):
         print i,lam
         for k,pr in enumerate(pos):
-            tmap=overlay_ring(npix_star,np.round(pr*Rs+xc),dRRs,lam,map0)
+            tmap=overlay_ring(npix_star,np.round(pr*Rs+xc),dRRs,lam,map0,OSF)
             for j,et in enumerate(opacity):
                 map=star*(1.-tmap*et)
                 sflux=map.sum(axis=0)
                 line_profile[k,i,j,:]=np.sum(sflux[:,np.newaxis]*profile,axis=0)/normalisation
-                """if (j == 3) & (k == 20):
-                    plt.imshow(tmap)
-                    plt.show()"""
-                    
+         
     hdu = fits.PrimaryHDU(line_profile)
     hdu.writeto(str("new_sim/simulation_RR_%4.2f.fits" % (2*dR)),overwrite=True)
